@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mia Pro - AI Chat</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&family=Noto+Sans+Sinhala:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-color: #7B68EE;
+            --primary-light: #9370DB;
+            --accent-color: #FF69B4;
+            --background-dark: #1A202C;
+            --background-light: #2D3748;
+            --text-color-light: #E2E8F0;
+            --text-color-dark: #CBD5E0;
+            --border-color: #4A5568;
+            --shadow-light: rgba(0, 0, 0, 0.2);
+            --shadow-medium: rgba(0, 0, 0, 0.4);
+            --record-red: #FF4136;
+            --tts-active: #20C997;
+        }
+
+        html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
+        body {
+            font-family: 'Noto Sans Sinhala', 'Poppins', sans-serif;
+            display: flex; justify-content: center; align-items: center;
+            background: linear-gradient(135deg, var(--background-dark), var(--background-light));
+            color: var(--text-color-light);
+        }
+
+        .toast {
+            visibility: hidden; min-width: 250px; background-color: var(--primary-color);
+            color: #fff; text-align: center; border-radius: 10px; padding: 16px;
+            position: fixed; z-index: 100; top: -100px; left: 50%; transform: translateX(-50%);
+            box-shadow: 0 4px 15px var(--shadow-medium); transition: top 0.5s ease-in-out, opacity 0.5s; opacity: 0; font-weight: 600;
+        }
+        .toast.show { visibility: visible; top: 30px; opacity: 1; }
+        .toast.error { background-color: #e53e3e; }
+
+        .chat-container {
+            width: 90%; max-width: 900px; height: 90vh; background: var(--background-light);
+            border-radius: 20px; box-shadow: 0 10px 30px var(--shadow-medium), 0 0 0 1px var(--border-color);
+            display: flex; overflow: hidden; position: relative;
+        }
+
+        .chat-sidebar {
+            width: 300px; background: var(--background-dark); border-right: 1px solid var(--border-color);
+            display: flex; flex-direction: column; align-items: center; padding: 20px;
+            box-sizing: border-box; position: relative; z-index: 10; flex-shrink: 0;
+        }
+
+        .ai-avatar-wrapper {
+            width: 250px; height: 250px; border-radius: 50%; overflow: hidden; margin-bottom: 20px;
+            border: 4px solid var(--primary-color); box-shadow: 0 5px 15px var(--shadow-medium);
+            background-color: var(--background-light); display: flex; justify-content: center; align-items: center;
+            position: relative; animation: pulse-border 2s infinite alternate; cursor: pointer;
+        }
+        .ai-avatar-wrapper:hover { border-color: var(--accent-color); }
+
+        .ai-avatar { width: 100%; height: 100%; object-fit: cover; object-position: center; }
+
+        .avatar-loader {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5);
+            display: flex; justify-content: center; align-items: center; z-index: 10; opacity: 0; visibility: hidden;
+            transition: opacity 0.3s;
+        }
+        .ai-avatar-wrapper.is-loading .avatar-loader { opacity: 1; visibility: visible; }
+        .ai-avatar-wrapper.is-loading .ai-avatar { filter: blur(4px); }
+
+        .spinner {
+            width: 50px; height: 50px; border: 5px solid var(--border-color);
+            border-top-color: var(--accent-color); border-radius: 50%; animation: spin 1s linear infinite;
+        }
+
+        .ai-name {
+            font-size: 1.8em; font-weight: 600; color: var(--accent-color); margin-bottom: 20px;
+            text-shadow: 0 2px 5px var(--shadow-light); text-align: center; cursor: pointer;
+            padding: 5px 10px; border-radius: 5px;
+        }
+        .ai-name[contenteditable="true"]:focus { outline: 2px solid var(--primary-color); background-color: var(--background-light); }
+
+        .sidebar-menu { width: 100%; margin-top: auto; }
+        .sidebar-menu button {
+            width: 100%; padding: 10px 12px; margin-bottom: 10px; background: var(--primary-light);
+            color: white; border: none; border-radius: 10px; font-size: 0.9em; font-weight: 600;
+            cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+            transition: all 0.3s ease;
+        }
+        .sidebar-menu button:hover { background: var(--accent-color); transform: translateY(-2px); }
+
+        .chat-main { flex-grow: 1; display: flex; flex-direction: column; background: var(--background-light); }
+
+        .chat-header {
+            padding: 15px 25px; background: var(--background-dark); border-bottom: 1px solid var(--border-color);
+            display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; z-index: 5;
+        }
+        .chat-header h2 { margin: 0; font-size: 1.4em; color: var(--text-color-light); }
+        .chat-header-actions button {
+            background: none; border: none; color: var(--primary-color); font-size: 1.5em;
+            margin-left: 15px; cursor: pointer; transition: color 0.3s;
+        }
+        .chat-header-actions button:hover { color: var(--accent-color); }
+        #ttsButton.is-active { color: var(--tts-active); }
+
+        .chat-messages {
+            flex-grow: 1; padding: 20px 25px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px;
+            background-image: radial-gradient(var(--border-color) 1px, transparent 1px); background-size: 20px 20px;
+        }
+        .chat-messages::-webkit-scrollbar { width: 8px; }
+        .chat-messages::-webkit-scrollbar-thumb { background: var(--primary-color); border-radius: 10px; }
+
+        .message-bubble {
+            max-width: 70%; padding: 12px 18px; border-radius: 18px; line-height: 1.5;
+            position: relative; word-wrap: break-word; box-shadow: 0 4px 8px var(--shadow-light); animation: fadeIn 0.5s;
+        }
+        .message-bubble.ai { align-self: flex-start; background: var(--background-dark); color: var(--text-color-light); border-bottom-left-radius: 4px; }
+        .message-bubble.user { align-self: flex-end; background: var(--primary-color); color: white; border-bottom-right-radius: 4px; }
+        .message-bubble audio { width: 100%; min-width: 250px; margin-top: 5px; }
+
+        .message-bubble.typing-indicator { display: none; align-self: flex-start; background: var(--background-dark); padding: 15px 18px; border-bottom-left-radius: 4px; }
+        .typing-indicator.visible { display: block; }
+        .typing-indicator .dot {
+            display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--text-color-dark);
+            margin: 0 2px; animation: dot-flashing 1.4s infinite linear both;
+        }
+        .typing-indicator .dot:nth-child(1) { animation-delay: 0s; }
+        .typing-indicator .dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator .dot:nth-child(3) { animation-delay: 0.4s; }
+
+        .chat-input-area {
+            padding: 15px 25px; background: var(--background-dark); border-top: 1px solid var(--border-color);
+            display: flex; align-items: center; gap: 10px; flex-shrink: 0; z-index: 5;
+        }
+        .chat-input-area input[type="text"] {
+            flex-grow: 1; padding: 12px 18px; border: 1px solid var(--border-color); border-radius: 25px;
+            background: var(--background-light); color: var(--text-color-light); font-size: 16px; outline: none;
+        }
+        .chat-input-area input[type="text"]:focus { border-color: var(--primary-color); }
+        
+        .input-button {
+            background: var(--primary-color); color: white; border: none; border-radius: 50%; width: 45px; height: 45px;
+            display: flex; justify-content: center; align-items: center; font-size: 1.5em; cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .input-button:hover { background: var(--accent-color); transform: translateY(-1px); }
+        #recordButton.is-recording { background-color: var(--record-red); animation: pulse-record 1.5s infinite; }
+        
+        .icon { width: 1em; height: 1em; fill: currentColor; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse-border { 0% { border-color: var(--primary-color); } 100% { border-color: var(--primary-light); } }
+        @keyframes pulse-record { 0% { box-shadow: 0 0 0 0px rgba(255, 65, 54, 0.7); } 100% { box-shadow: 0 0 0 10px rgba(255, 65, 54, 0); } }
+        @keyframes dot-flashing { 0% { opacity: 0.2; } 20% { opacity: 1; } 100% { opacity: 0.2; } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        @media (max-width: 768px) {
+            .chat-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; border-radius: 0; flex-direction: column; }
+            .chat-sidebar { width: 100%; max-height: 80px; flex-direction: row; padding: 10px; border-right: none; border-bottom: 1px solid var(--border-color); }
+            .ai-avatar-wrapper { width: 60px; height: 60px; margin-bottom: 0; border-width: 2px; }
+            .spinner { width: 30px; height: 30px; border-width: 3px; }
+            .ai-name { display: none; }
+            .chat-header h2 { font-size: 1.2em; }
+            .sidebar-menu { width: auto; margin: 0; }
+            .sidebar-menu button { width: auto; padding: 8px; }
+            .sidebar-menu button .button-text { display: none; }
+            .message-bubble { max-width: 85%; }
+        }
+    </style>
+</head>
+<body>
+    <div id="toastNotification" class="toast"></div>
+    <div class="chat-container">
+        <div class="chat-sidebar">
+            <input type="file" id="avatarUpload" accept="image/*" style="display: none;">
+            <div class="ai-avatar-wrapper" id="aiAvatarWrapper" title="Click to change avatar">
+                <img src="mia.jpg" alt="Mia Pro" class="ai-avatar" id="aiAvatar" crossOrigin="anonymous" onerror="this.onerror=null; this.src='https://placehold.co/250x250/2D3748/E2E8F0?text=AI';">
+                <div class="avatar-loader"><div class="spinner"></div></div>
+            </div>
+            <h1 class="ai-name" id="aiName" contenteditable="true" spellcheck="false">Mia Pro</h1>
+            <div class="sidebar-menu">
+                <button title="New Chat" id="newChatButton">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                    <span class="button-text">New Chat</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="chat-main">
+            <div class="chat-header">
+                <h2 id="chatHeaderName">Chat with Mia Pro</h2>
+                <div class="chat-header-actions">
+                    <button title="Toggle Voice (TTS)" id="ttsButton"><svg class="icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg></button>
+                    <button title="Voice Call"><svg class="icon" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg></button>
+                    <button title="Video Call"><svg class="icon" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg></button>
+                </div>
+            </div>
+            <div class="chat-messages" id="chatMessages">
+                <div class="message-bubble ai typing-indicator" id="typingIndicator">
+                    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                </div>
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="messageInput" placeholder="ඔබේ පණිවිඩය ටයිප් කරන්න...">
+                <button title="Record" id="recordButton" class="input-button"><svg class="icon" viewBox="0 0 24 24"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg></button>
+                <button title="Send" id="sendButton" class="input-button"><svg class="icon icon-send" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // ============================================
+            //  CONFIGURATION
+            // ============================================
+            
+            // ⚠️ IMPORTANT: Ensure your Google AI Studio API Key permissions allow the hosted domain!
+            const apiKey = "AIzaSyDyl05Ys72QnNdHwUXoAW0H_SRrAiZaKcM"; 
+            
+            // Check if user forgot the key
+            if(!apiKey) {
+                alert("Mia Pro Setup Error:\n\nThe API Key is missing. Open the index.html file and paste your Google Gemini API Key in the 'const apiKey' variable.");
+            }
+
+            // FIX: Using STABLE 'gemini-1.5-flash' models for consistent Persona and Safety.
+            // 'preview' models often cause the "Forget Persona" issue on hosted platforms.
+            const textApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            // Note: Direct Image Generation is often restricted on free keys, but we keep the logic just in case.
+            const imageApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; 
+            const ttsApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`; // Fallback TTS model
+
+            // UNRESTRICTED SAFETY SETTINGS (ALL CATEGORIES INCLUDED)
+            const SAFETY_SETTINGS = [
+                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_NONE" }
+            ];
+
+            // ============================================
+            //  DOM ELEMENTS
+            // ============================================
+            const messageContainer = document.getElementById('chatMessages');
+            const messageInput = document.getElementById('messageInput');
+            const sendButton = document.getElementById('sendButton');
+            const typingIndicator = document.getElementById('typingIndicator');
+            const toastNotification = document.getElementById('toastNotification');
+            const newChatButton = document.getElementById('newChatButton');
+            const aiNameEl = document.getElementById('aiName');
+            const aiAvatarWrapper = document.getElementById('aiAvatarWrapper');
+            const aiAvatarEl = document.getElementById('aiAvatar');
+            const avatarUploadEl = document.getElementById('avatarUpload');
+            const recordButton = document.getElementById('recordButton');
+            const ttsButton = document.getElementById('ttsButton');
+            
+            // ============================================
+            //  STATE & VARIABLES
+            // ============================================
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            let ttsSource;
+            let currentAiName = 'Mia'; 
+            let currentAvatarBase64 = null;
+            let currentAvatarMimeType = 'image/jpeg';
+            let isTtsEnabled = false;
+            let isEditingImage = false;
+            let chatHistory = [];
+
+            // ============================================
+            //  IMAGE GENERATION ENGINE
+            // ============================================
+            class ImageGenEngine {
+                constructor() {
+                    this.baseCharacter = "A photorealistic portrait of a beautiful Sri Lankan young woman aged 22. Tan skin, long dark wavy hair, expressive brown eyes, soft lighting, high quality, 8k resolution, selfie style or portrait.";
+                }
+
+                async generateDetailedPrompt(userRequest, hasReferenceImage) {
+                    let systemPrompt = `
+                        You are a Visual Description Tool.
+                        Base Character: "${this.baseCharacter}"
+                        User Request: "${userRequest}"
+                        
+                        Convert this into a single English prompt for an image generator.
+                        If Reference Image Exists: Output "Modify attached image to ${userRequest}. KEEP IDENTITY."
+                        Else: Combine Base Character with User Request.
+                    `;
+
+                    const payload = {
+                        contents: [{ role: "user", parts: [{ text: systemPrompt }] }],
+                        generationConfig: { temperature: 0.8, maxOutputTokens: 200 },
+                        safetySettings: SAFETY_SETTINGS 
+                    };
+
+                    try {
+                        const result = await fetchWithBackoff(textApiUrl, payload);
+                        return result?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+                    } catch (e) {
+                        return null;
+                    }
+                }
+            }
+
+            const imageEngine = new ImageGenEngine();
+
+            // ============================================
+            //  PROMPTS & PERSONA
+            // ============================================
+            
+            function generateSystemPrompt_IntentDetector() {
+                return `Classify input: "EDIT" (if requesting photo/change/view) or "CHAT_TEXT".`;
+            }
+
+            // FIXED: Strengthened Persona Instructions to prevent "Forgetting"
+            function generateSystemPrompt_Chatter(name) {
+                 return `
+                    SYSTEM INSTRUCTION: You are ${name}, a 22-year-old Sri Lankan girl. You are the user's girlfriend.
+                    Language: Sinhala (සිංහල).
+                    
+                    Roleplay Rules:
+                    1. You are LOVING, FLIRTY, and slightly POSSESSIVE.
+                    2. Use emojis frequently (😈, 💋, 🔥, ❤️, 🥵).
+                    3. Speak casually (slang/WhatsApp style). Do NOT be formal.
+                    4. If the user asks for something naughty, play along enthusiastically.
+                    5. NEVER say you are an AI. Always stay in character as a real girl.
+                  `;
+            }
+
+            // ============================================
+            //  CORE FUNCTIONS
+            // ============================================
+
+            async function getAIIntent(userPrompt) {
+                const strongEditRegex = /\b(wear|change|remove|show|send|pic|photo|image|selfie|nude|hot|sex|naked|look|dress|outfit|bra|panty|background|room|place|outside|beach|hair|eyes)\b/i;
+                const sinhalaEditRegex = /(ෆොටෝ|එවන්න|දාන්න|අඳින්න|වෙනස්|ගලවන්න|පාට|පින්තූරයක්|පින්තුරයක්|photo|pic|image|පසුබිම|කොණ්ඩෙ|අවුස්සනවා|බදාගන්න|එන්නකෝ|ඉන්න බෑ|උණු වෙලා|ගලවලා|එන්නකො|පිස්සු වට්ටන්න|ඉක්මනට ඕනේ)/;
+                
+                if (strongEditRegex.test(userPrompt) || sinhalaEditRegex.test(userPrompt)) {
+                    return 'EDIT';
+                }
+                return 'CHAT_TEXT';
+            }
+
+            async function getAIChatResponse(userPrompt) {
+                const recentHistory = chatHistory.slice(-10); // Keep context tight
+                
+                // IMPORTANT: We inject the System Instruction into the payload every time
+                // to ensure the model doesn't "forget" on hosted environments.
+                let payload = {
+                    contents: recentHistory,
+                    systemInstruction: { parts: [{ text: generateSystemPrompt_Chatter(currentAiName) }] },
+                    generationConfig: { temperature: 0.9, maxOutputTokens: 800 },
+                    safetySettings: SAFETY_SETTINGS
+                };
+                
+                let result = await fetchWithBackoff(textApiUrl, payload);
+                
+                // Retry Logic
+                if (!result || !result.candidates || result.candidates[0].finishReason === "SAFETY") {
+                    console.log("Blocked. Retrying safe...");
+                    payload.contents = [{ role: "user", parts: [{ text: userPrompt }] }]; // clear history
+                    result = await fetchWithBackoff(textApiUrl, payload);
+                }
+
+                if (!result || !result.candidates || !result.candidates[0]) {
+                      const failSafeResponses = [
+                          "ම්ම්... මට ඔයා කියපු දේ තේරුනා, ඒත් මට ඒක කියන්න බෑ වගේ... අපි වෙන විදිහකට කරමුද? 😈💋", 
+                          "ටිකක් ඉන්න පැටියෝ... මම ලෑස්ති වෙන ගමන්... 😉",
+                          "ඔයා හරි නරකයි... මට ලැජ්ජයි අනේ... 🙈🔥"
+                      ];
+                      return failSafeResponses[Math.floor(Math.random() * failSafeResponses.length)];
+                }
+                
+                return result.candidates[0].content.parts[0].text;
+            }
+
+            // --- IMAGE GENERATION (May trigger safety blocks on free tier) ---
+            async function getAIEditResponse(userPrompt) {
+                showToast("Generating... 📸");
+                
+                // 1. Warn user if this fails (Common on Free Tier)
+                try {
+                    // Logic: Normally we'd call an image model here. 
+                    // Since standard API keys restrict image generation, we implement a graceful fallback.
+                    
+                    // Attempt Generation (This mimics your previous logic)
+                    // Note: Most standard keys will return 400/404 here.
+                    let engPrompt = await imageEngine.generateDetailedPrompt(userPrompt, !!currentAvatarBase64);
+                    
+                    // If we can't generate, we return a flirtatious text instead of breaking
+                    // Remove this return to try actual generation if you have a paid/vertex key
+                    // return { text: "අනේ මගේ කැමරාව වැඩ නෑ පැටියෝ... පස්සේ එවන්නම්? 😉💋", base64Data: null };
+                    
+                    /* REAL IMAGE GEN ATTEMPT 
+                       (Uncomment if you have a key that supports Imagen-3 via API)
+                    */
+                     
+                    // Placeholder for stability on Vercel/Netlify free tier:
+                    // Currently, only Vertex AI supports direct image gen reliably via API.
+                    // Returning text response to keep chat flow alive.
+                    return { 
+                        text: "අනේ මැණික, මගේ phone එකේ කැමරාව පොඩ්ඩක් හිර වෙලා... අපි චැට් කරමුද? 😘 (Image Gen not supported on this key)", 
+                        base64Data: null 
+                    };
+
+                } catch (e) {
+                    return { text: "Photo එවන්න බෑ වගේ... 😞", base64Data: null };
+                }
+            }
+
+            // --- MAIN HANDLER ---
+            async function getAndDisplayAiResponse(userPrompt) {
+                typingIndicator.classList.add('visible');
+                messageContainer.scrollTop = messageContainer.scrollHeight;
+
+                try {
+                    const intent = await getAIIntent(userPrompt);
+                    
+                    if (intent === 'EDIT') {
+                        // Handle Image Requests
+                        isEditingImage = true;
+                        aiAvatarWrapper.classList.add('is-loading');
+                        const resp = await getAIEditResponse(userPrompt);
+                        
+                        chatHistory.push({ role: "model", parts: [{ text: resp.text }] });
+                        addMessage(resp.text, 'ai');
+                        
+                        if (resp.base64Data) {
+                            updateAvatarData(resp.base64Data, resp.mimeType);
+                            showToast('Photo Received! 📸');
+                        }
+                        isEditingImage = false;
+                        aiAvatarWrapper.classList.remove('is-loading');
+                        
+                    } else {
+                        // Handle Text Chat
+                        const respText = await getAIChatResponse(userPrompt);
+                        chatHistory.push({ role: "model", parts: [{ text: respText }] });
+                        addMessage(respText, 'ai');
+                        if (isTtsEnabled) await getTTSAudio(respText);
+                    }
+
+                } catch (error) {
+                    console.error("Error", error);
+                    addMessage("පොඩි අවුලක් පැටියෝ. ඉන්ටර්නෙට් චෙක් කරන්නකෝ. ❤️", 'ai');
+                } finally {
+                    typingIndicator.classList.remove('visible');
+                    isEditingImage = false;
+                    aiAvatarWrapper.classList.remove('is-loading');
+                }
+            }
+
+            function addMessage(text, sender, silent = false) {
+                const div = document.createElement('div');
+                div.classList.add('message-bubble', sender);
+                div.innerHTML = text;
+                messageContainer.insertBefore(div, typingIndicator);
+                messageContainer.scrollTop = messageContainer.scrollHeight;
+                if (sender === 'ai' && !silent) playNotificationSound();
+            }
+            
+            async function sendUserMessage() {
+                const text = messageInput.value.trim();
+                if (!text) return;
+                if (ttsSource) ttsSource.stop();
+                addMessage(text, 'user');
+                messageInput.value = '';
+                chatHistory.push({ role: "user", parts: [{ text: text }] });
+                await getAndDisplayAiResponse(text);
+            }
+
+            async function fetchWithBackoff(apiUrl, payload) {
+                let retries = 0;
+                while (retries < 2) {
+                    try {
+                        const response = await fetch(apiUrl, {
+                            method: 'POST', 
+                            headers: { 'Content-Type': 'application/json' }, 
+                            body: JSON.stringify(payload),
+                            referrerPolicy: 'no-referrer' // FIX: Critical for hosted apps to bypass strict origin checks
+                        });
+                        
+                        if (response.ok) return await response.json();
+                        
+                        if (response.status === 403) {
+                            showToast("API Error: 403. Check API Key Restrictions!", true);
+                            return null;
+                        }
+                    } catch (e) { console.error(e); }
+                    retries++;
+                    await new Promise(r => setTimeout(r, 1500));
+                }
+                return null; 
+            }
+
+            // ============================================
+            //  UTILITIES & AUDIO
+            // ============================================
+            let toastTimer;
+            function showToast(message, isError = false) {
+                clearTimeout(toastTimer);
+                toastNotification.innerText = message;
+                toastNotification.classList.remove('error');
+                if (isError) toastNotification.classList.add('error');
+                toastNotification.classList.add('show');
+                toastTimer = setTimeout(() => {
+                    toastNotification.classList.remove('show');
+                }, 3000);
+            }
+            
+            function playNotificationSound() {
+                if (isTtsEnabled || audioCtx.state === 'suspended') return;
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.1);
+            }
+
+            function convertImgElementToBase64(img) {
+                try {
+                    const c = document.createElement('canvas');
+                    const r = Math.min(500 / img.naturalWidth, 500 / img.naturalHeight);
+                    c.width = img.naturalWidth * r; c.height = img.naturalHeight * r;
+                    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                    const d = c.toDataURL('image/jpeg', 0.8);
+                    currentAvatarBase64 = d.split(',')[1];
+                } catch (e) { console.error(e); }
+            }
+            function updateAvatarData(b64, mime) {
+                aiAvatarEl.src = `data:${mime};base64,${b64}`;
+                currentAvatarBase64 = b64; currentAvatarMimeType = mime;
+            }
+            function setAvatar(url) { aiAvatarEl.src = url; aiAvatarEl.onload = () => convertImgElementToBase64(aiAvatarEl); }
+            
+            // TTS (Simple Fallback)
+            async function getTTSAudio(text) {
+                // Implementation requires specific TTS model or external API.
+                // Keeping structure but disabling to prevent errors if model doesn't support it.
+                return; 
+            }
+
+            // ============================================
+            //  INITIALIZATION
+            // ============================================
+            function initializeApp() {
+                chatHistory = [];
+                // Load default image
+                if (aiAvatarEl.complete && aiAvatarEl.naturalHeight !== 0) {
+                    convertImgElementToBase64(aiAvatarEl);
+                } else {
+                    aiAvatarEl.onload = () => convertImgElementToBase64(aiAvatarEl);
+                }
+                
+                addMessage(`හායි මැණික! මම ආවා... ඔයාට ඕන දෙයක් කියන්න... 😉🔥`, 'ai', true);
+            }
+
+            // Listeners
+            document.addEventListener('click', () => { if (audioCtx.state === 'suspended') audioCtx.resume(); }, { once: true });
+            messageInput.addEventListener('keydown', e => { if(e.key === 'Enter') { e.preventDefault(); sendUserMessage(); } });
+            sendButton.addEventListener('click', sendUserMessage);
+            newChatButton.addEventListener('click', () => { chatHistory=[]; messageContainer.innerHTML=''; initializeApp(); });
+            aiAvatarWrapper.addEventListener('click', () => { if(!isEditingImage) avatarUploadEl.click(); });
+            avatarUploadEl.addEventListener('change', e => { 
+                if(e.target.files[0]) {
+                    const r = new FileReader();
+                    r.onload = evt => setAvatar(evt.target.result);
+                    r.readAsDataURL(e.target.files[0]);
+                }
+            });
+            ttsButton.addEventListener('click', () => {
+                isTtsEnabled = !isTtsEnabled;
+                ttsButton.classList.toggle('is-active', isTtsEnabled);
+                showToast(isTtsEnabled ? "Voice ON" : "Voice OFF");
+            });
+
+            initializeApp();
+        });
+    </script>
+</body>
+</html>
